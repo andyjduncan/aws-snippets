@@ -1,0 +1,202 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: >
+  Infrastructure needed to enable SSM sessions to an instance.
+
+Metadata:
+  Instances:
+    Description: >
+      The instance launched by this template is in a private subnet, does not have a routable ip address, and has no
+      key pair associated with it.
+
+Parameters:
+  LatestAmiId:
+    Description: AMI for instance launched.  Defaults to latest Amazon Linux 2.
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  PrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}b"
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: False
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-priv"
+      VpcId: !Ref Vpc
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-priv"
+      VpcId: !Ref Vpc
+
+  PrivateRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnet
+
+  Ec2Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: True
+      SecurityGroupIds:
+        - !Sub "${Vpc.DefaultSecurityGroup}"
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2"
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+  Ec2MessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: True
+      SecurityGroupIds:
+        - !Sub "${Vpc.DefaultSecurityGroup}"
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2messages"
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: True
+      SecurityGroupIds:
+        - !Sub "${Vpc.DefaultSecurityGroup}"
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssm"
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+  SsmMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: True
+      SecurityGroupIds:
+        - !Sub "${Vpc.DefaultSecurityGroup}"
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ssmmessages"
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PrivateDnsEnabled: True
+      SecurityGroupIds:
+        - !Sub "${Vpc.DefaultSecurityGroup}"
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.logs"
+      SubnetIds:
+        - !Ref PrivateSubnet
+      VpcEndpointType: Interface
+      VpcId: !Ref Vpc
+
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: SsmResources
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub "arn:aws:s3:::aws-ssm-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::aws-windows-downloads-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::amazon-ssm-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::amazon-ssm-packages-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::${AWS::Region}-birdwatcher-prod/*"
+              - !Sub "arn:aws:s3:::patch-baseline-snapshot-${AWS::Region}/*"
+          - Sid: AmazonLinuxRepository
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub "arn:aws:s3:::amazonlinux.${AWS::Region}.amazonaws.com/*"
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      VpcId: !Ref Vpc
+
+  SsmS3Policy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Access to SSM resources in S3
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource:
+              - !Sub "arn:aws:s3:::aws-ssm-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::aws-windows-downloads-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::amazon-ssm-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::amazon-ssm-packages-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::${AWS::Region}-birdwatcher-prod/*"
+              - !Sub "arn:aws:s3:::patch-baseline-snapshot-${AWS::Region}/*"
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - !Ref SsmS3Policy
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !Ref LatestAmiId
+      InstanceType: t3.micro
+      SecurityGroupIds:
+        - !Sub "${Vpc.DefaultSecurityGroup}"
+      SubnetId: !Ref PrivateSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-instance"
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${AWS::StackName}/sessions"
+      RetentionInDays: 1
+
