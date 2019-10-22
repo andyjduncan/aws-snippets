@@ -1,0 +1,47 @@
+Parameters:
+  AmiId:
+    Description: AMI for instance launched.  Defaults to latest Amazon Linux 2.
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+  InstanceType:
+    Description: Instance type to be launched.
+    Type: String
+    Default: t3a.nano
+    AllowedValues:
+      - t3a.nano
+      - t3a.micro
+      - t3a.small
+
+  InstanceKey:
+    Description: Key pair to use with the launched instance
+    Type: AWS::EC2::KeyPair::KeyName
+
+  VpcId:
+    Description: VPC the instance was launched into
+    Type: AWS::EC2::VPC::Id
+
+  AdminIpAddress:
+    Description: Address to allow administrative access from
+    Type: String
+
+Resources:
+  AdminSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Admin access
+      SecurityGroupIngress:
+        - CidrIp: !Ref AdminIpAddress
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+      VpcId: !Ref VpcId
+
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref InstanceKey
+      SecurityGroupIds:
+        - !Ref AdminSecurityGroup

@@ -1,0 +1,21 @@
+Parameters:
+  AmiId:
+    Description: AMI for instance launched.  Defaults to latest Amazon Linux 2.
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+  InstanceType:
+    Description: Instance type to be launched.
+    Type: String
+    Default: t3a.nano
+    AllowedValues:
+      - t3a.nano
+      - t3a.micro
+      - t3a.small
+
+Resources:
+  MyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
