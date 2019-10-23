@@ -1,0 +1,27 @@
+Parameters:
+  VpcId:
+    Description: VPC to create security groups in
+    Type: AWS::EC2::VPC::Id
+
+  AdminIpAddress:
+    Description: Address to allow administrative access from
+    Type: String
+
+Resources:
+  AdminSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Admin access
+      SecurityGroupIngress:
+        - CidrIp: !Ref AdminIpAddress
+          FromPort: 22
+          ToPort: 22
+          IpProtocol: tcp
+      VpcId: !Ref VpcId
+
+Outputs:
+  AdminGroupIdOutput:
+    Description: Administrative security group id
+    Value: !GetAtt AdminSecurityGroup.GroupId
+    Export:
+      Name: !Sub "${VpcId}-AdminGroupId"
